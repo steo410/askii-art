@@ -2,153 +2,182 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>Image to ASCII Art (Transparent PNG)</title>
+  <title>ASCII Art Generator</title>
+
   <style>
     body {
-      font-family: monospace;
       background: #111;
       color: #eee;
+      font-family: monospace;
       padding: 20px;
     }
-    input, button {
+
+    h2 {
       margin-bottom: 10px;
     }
+
+    label {
+      margin-right: 15px;
+    }
+
     #ascii {
+      margin-top: 20px;
       white-space: pre;
       font-size: 8px;
       line-height: 8px;
     }
+
+    canvas {
+      display: none;
+    }
   </style>
 </head>
 <body>
-  <h2>이미지 → ASCII 문자 변환</h2>
 
-  <input type="file" accept="image/*" id="upload" />
-  <br />
-  <label>출력 색상:</label>
-  <input type="color" id="colorPicker" value="#00ff00" />
-  <br />
-  <button id="saveBtn">PNG 저장</button>
+<h2>이미지 → ASCII 아트</h2>
 
-  <br /><br />
-  <div id="ascii"></div>
+<input type="file" accept="image/*" id="upload" />
 
-  <canvas id="canvas" style="display:none;"></canvas>
-  <canvas id="exportCanvas" style="display:none;"></canvas>
+<br><br>
 
-  <script>
-    const upload = document.getElementById('upload');
-    const asciiDiv = document.getElementById('ascii');
-    const canvas = document.getElementById('canvas');
-    const exportCanvas = document.getElementById('exportCanvas');
-    const ctx = canvas.getContext('2d');
-    const exportCtx = exportCanvas.getContext('2d');
-    const colorPicker = document.getElementById('colorPicker');
-    const saveBtn = document.getElementById('saveBtn');
+<label>
+  글자 색상:
+  <input type="color" id="color" value="#ffffff">
+</label>
 
-    const chars =
-      "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft\\|()1{}[]?-_+~<>i!lI;:,\"^`'. ";
+<label>
+  해상도 배율:
+  <select id="scale">
+    <option value="1">1x</option>
+    <option value="2">2x</option>
+    <option value="4">4x</option>
+  </select>
+</label>
 
-    upload.addEventListener('change', renderASCII);
+<label>
+  다운로드 형식:
+  <select id="format">
+    <option value="png">PNG</option>
+    <option value="jpg">JPG</option>
+  </select>
+</label>
 
-    colorPicker.addEventListener('input', () => {
-      asciiDiv.style.color = colorPicker.value;
-    });
+<button id="download">이미지 다운로드</button>
 
-    function renderASCII() {
-      const file = upload.files[0];
-      if (!file) return;
+<div id="ascii"></div>
 
-      const img = new Image();
-      img.onload = () => {
-        const scale = 0.5;
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
+<canvas id="canvas"></canvas>
 
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+<script>
+const upload = document.getElementById("upload");
+const asciiDiv = document.getElementById("ascii");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
 
-        let ascii = '';
-        for (let y = 0; y < canvas.height; y++) {
-          for (let x = 0; x < canvas.width; x++) {
-            const i = (y * canvas.width + x) * 4;
-            const brightness =
-              0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-            const idx = Math.floor((brightness / 255) * (chars.length - 1));
-            ascii += chars[idx];
-          }
-          ascii += '\n';
-        }
+const colorInput = document.getElementById("color");
+const scaleSelect = document.getElementById("scale");
+const formatSelect = document.getElementById("format");
+const downloadBtn = document.getElementById("download");
 
-        asciiDiv.textContent = ascii;
-        asciiDiv.style.color = colorPicker.value;
-      };
+// 밝기 → 문자
+const chars =
+"$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft|()1{}[]?-_+~<>i!lI;:,\"^`'. ";
 
-      img.src = URL.createObjectURL(file);
+let asciiText = "";
+
+// 이미지 → ASCII
+upload.addEventListener("change", () => {
+  const file = upload.files[0];
+  if (!file) return;
+
+  const img = new Image();
+  img.onload = () => {
+    const baseScale = 0.5;
+    canvas.width = img.width * baseScale;
+    canvas.height = img.height * baseScale;
+
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+
+    let result = "";
+
+    for (let y = 0; y < canvas.height; y++) {
+      for (let x = 0; x < canvas.width; x++) {
+        const i = (y * canvas.width + x) * 4;
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+
+        const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+        const index = Math.floor(
+          (brightness / 255) * (chars.length - 1)
+        );
+
+        result += chars[index];
+      }
+      result += "\n";
     }
 
-    saveBtn.addEventListener('click', () => {
-      const text = asciiDiv.textContent;
-      if (!text) return;
+    asciiText = result;
+    asciiDiv.textContent = asciiText;
+    asciiDiv.style.color = colorInput.value;
+  };
 
-      const lines = text.split('\n').filter(l => l.trim().length > 0);
+  img.src = URL.createObjectURL(file);
+});
 
-      const fontSize = 8;
-      const lineHeight = 8;
-      const padding = 10;
+// 색상 변경
+colorInput.addEventListener("input", () => {
+  asciiDiv.style.color = colorInput.value;
+});
 
-      // 넉넉하게 그릴 캔버스 (배경 안 그림 = 투명)
-      exportCanvas.width = 2000;
-      exportCanvas.height = lines.length * lineHeight + padding * 2;
-      exportCtx.clearRect(0, 0, exportCanvas.width, exportCanvas.height);
+// 다운로드
+downloadBtn.addEventListener("click", () => {
+  if (!asciiText.trim()) return;
 
-      exportCtx.font = `${fontSize}px monospace`;
-      exportCtx.fillStyle = colorPicker.value;
-      exportCtx.textBaseline = "top";
+  const lines = asciiText.split("\n");
+  const scale = parseInt(scaleSelect.value);
+  const fontSize = 8 * scale;
+  const font = `${fontSize}px monospace`;
 
-      lines.forEach((line, i) => {
-        exportCtx.fillText(line, padding, padding + i * lineHeight);
-      });
+  const outCanvas = document.createElement("canvas");
+  const outCtx = outCanvas.getContext("2d");
 
-      // 픽셀 스캔으로 정확히 크롭
-      const imgData = exportCtx.getImageData(
-        0, 0, exportCanvas.width, exportCanvas.height
-      );
-      const data = imgData.data;
+  outCtx.font = font;
 
-      let minX = exportCanvas.width, minY = exportCanvas.height;
-      let maxX = 0, maxY = 0;
+  const width = Math.max(
+    ...lines.map(line => outCtx.measureText(line).width)
+  );
 
-      for (let y = 0; y < exportCanvas.height; y++) {
-        for (let x = 0; x < exportCanvas.width; x++) {
-          const alpha = data[(y * exportCanvas.width + x) * 4 + 3];
-          if (alpha > 0) {
-            minX = Math.min(minX, x);
-            minY = Math.min(minY, y);
-            maxX = Math.max(maxX, x);
-            maxY = Math.max(maxY, y);
-          }
-        }
-      }
+  outCanvas.width = Math.ceil(width);
+  outCanvas.height = lines.length * fontSize;
 
-      const w = maxX - minX + 1;
-      const h = maxY - minY + 1;
+  // JPG 배경
+  if (formatSelect.value === "jpg") {
+    outCtx.fillStyle = "#ffffff";
+    outCtx.fillRect(0, 0, outCanvas.width, outCanvas.height);
+  }
 
-      const cropped = document.createElement('canvas');
-      cropped.width = w;
-      cropped.height = h;
-      cropped.getContext('2d').drawImage(
-        exportCanvas,
-        minX, minY, w, h,
-        0, 0, w, h
-      );
+  outCtx.font = font;
+  outCtx.fillStyle = colorInput.value;
+  outCtx.textBaseline = "top";
 
-      const link = document.createElement('a');
-      link.download = "ascii-art-transparent.png";
-      link.href = cropped.toDataURL("image/png");
-      link.click();
-    });
-  </script>
+  lines.forEach((line, i) => {
+    outCtx.fillText(line, 0, i * fontSize);
+  });
+
+  const mime =
+    formatSelect.value === "png"
+      ? "image/png"
+      : "image/jpeg";
+
+  const url = outCanvas.toDataURL(mime, 1.0);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `ascii-art.${formatSelect.value}`;
+  a.click();
+});
+</script>
+
 </body>
 </html>
-
