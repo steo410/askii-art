@@ -1,191 +1,238 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8" />
-<title>ASCII / 한글 아트 생성기</title>
+<meta charset="UTF-8">
+<title>Color ASCII Art Generator</title>
 
 <style>
-  body {
-    background: #111;
-    color: #eee;
-    font-family: monospace;
-    padding: 20px;
-  }
-
-  #ascii {
-    white-space: pre;
-    font-family: monospace;
-    margin-top: 20px;
-    font-size: 8px;
-    line-height: 8px;
-  }
-
-  canvas {
-    display: none;
-  }
-</style>
-</head>
-<body>
-
-<h2>이미지 → 문자 아트</h2>
-
-<input type="file" id="upload" accept="image/*">
-
-<br><br>
-
-<label>
-  글자 색상:
-  <input type="color" id="color" value="#ffffff">
-</label>
-
-<label>
-  해상도:
-  <select id="scale">
-    <option value="1">높음</option>
-    <option value="2">중간</option>
-    <option value="4">낮음</option>
-  </select>
-</label>
-
-<label>
-  문자 종류:
-  <select id="charset">
-    <option value="ascii">영어 ASCII</option>
-    <option value="korean">한국어</option>
-  </select>
-</label>
-
-<label>
-  다운로드 형식:
-  <select id="format">
-    <option value="png">PNG</option>
-    <option value="jpg">JPG</option>
-  </select>
-</label>
-
-<button id="download">이미지 다운로드</button>
-
-<div id="ascii"></div>
-<canvas id="canvas"></canvas>
-
-<script>
-const upload = document.getElementById("upload");
-const asciiDiv = document.getElementById("ascii");
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
-
-const colorInput = document.getElementById("color");
-const scaleSelect = document.getElementById("scale");
-const formatSelect = document.getElementById("format");
-const charsetSelect = document.getElementById("charset");
-
-// 문자 세트
-const ASCII_CHARS =
-"$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,\"^`'. ";
-
-const KOREAN_CHARS =
-"가나다라마바사아자차카타파하하하하하ㅇㅇㅇㅇㅇ···   ";
-
-let currentImage = null;
-
-function getChars() {
-  return charsetSelect.value === "korean"
-    ? KOREAN_CHARS
-    : ASCII_CHARS;
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #000;
+  color: #fff;
+  font-family: monospace;
+  height: 100%;
 }
 
-function generateASCII() {
-  if (!currentImage) return;
+#controls {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: #111;
+  padding: 10px;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-family: system-ui, sans-serif;
+}
 
-  const scale = parseInt(scaleSelect.value);
-  const aspect = 0.5;
+#ascii {
+  position: absolute;
+  top: calc(var(--control-height, 80px));
+  left: 0;
+  right: 0;
+  bottom: 0;
+  white-space: pre;
+  overflow: auto;
+}
+</style>
+</head>
 
-  canvas.width  = Math.floor(currentImage.width / scale);
-  canvas.height = Math.floor(currentImage.height / scale * aspect);
+<body>
 
-  ctx.drawImage(currentImage, 0, 0, canvas.width, canvas.height);
+<div id="controls">
+  <input type="file" id="imageInput" accept="image/*">
+
+  해상도
+  <select id="scale">
+    <option value="0.5">높음</option>
+    <option value="1" selected>보통</option>
+    <option value="2">낮음</option>
+  </select>
+
+  문자
+  <select id="charset">
+    <option value="eng">아스키</option>
+    <option value="kor">한글</option>
+  </select>
+
+  색상
+  <select id="colorMode">
+    <option value="original">원본</option>
+    <option value="single">단색</option>
+  </select>
+
+  <input type="color" id="singleColor" value="#ffffff" disabled>
+
+  <button id="downloadPNG">PNG</button>
+  <button id="downloadJPG">JPG</button>
+  <button id="downloadTXT">TXT</button>
+</div>
+
+<div id="ascii"></div>
+
+<script>
+const controls = document.getElementById("controls");
+const asciiDiv = document.getElementById("ascii");
+
+const imageInput = document.getElementById("imageInput");
+const scaleSelect = document.getElementById("scale");
+const charsetSelect = document.getElementById("charset");
+const colorModeSelect = document.getElementById("colorMode");
+const singleColorInput = document.getElementById("singleColor");
+
+const ENG_CHARS = ' .\'`^",:;Il!i<>~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$';
+const KOR_CHARS = ' 가나다라마바사아자차카타파하';
+
+
+let asciiData = [];
+
+// 컨트롤 높이 반영
+function updateLayout() {
+  const h = controls.offsetHeight;
+  document.documentElement.style.setProperty("--control-height", h + "px");
+}
+window.addEventListener("resize", updateLayout);
+updateLayout();
+
+colorModeSelect.addEventListener("change", () => {
+  singleColorInput.disabled = colorModeSelect.value !== "single";
+  renderASCII();
+});
+
+singleColorInput.addEventListener("input", renderASCII);
+scaleSelect.addEventListener("change", renderASCII);
+charsetSelect.addEventListener("change", renderASCII);
+
+imageInput.addEventListener("change", () => {
+  const file = imageInput.files[0];
+  if (!file) return;
+
+  const img = new Image();
+  img.src = URL.createObjectURL(file);
+  img.onload = () => generateASCII(img);
+});
+
+function generateASCII(img) {
+  const scale = parseFloat(scaleSelect.value);
+  const chars = charsetSelect.value === "kor" ? KOR_CHARS : ENG_CHARS;
+
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+
+  canvas.width = Math.floor(img.width / scale);
+  canvas.height = Math.floor(img.height / scale);
+
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
   const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
 
-  const chars = getChars();
-  let result = "";
+  asciiData = [];
 
   for (let y = 0; y < canvas.height; y++) {
+    let row = [];
     for (let x = 0; x < canvas.width; x++) {
       const i = (y * canvas.width + x) * 4;
       const r = data[i];
       const g = data[i + 1];
       const b = data[i + 2];
 
-      const brightness = (0.299*r + 0.587*g + 0.114*b) / 255;
-      const index = Math.floor((1 - brightness) * (chars.length - 1));
+      const brightness = 0.299*r + 0.587*g + 0.114*b;
+      const index = Math.floor(
+        (brightness / 255) * (chars.length - 1)
+      );
 
-      result += chars[index];
+      row.push({
+        ch: chars[index],
+        r, g, b
+      });
     }
-    result += "\n";
+    asciiData.push(row);
   }
 
-  asciiDiv.textContent = result;
-  asciiDiv.style.color = colorInput.value;
+  renderASCII();
 }
 
-upload.addEventListener("change", () => {
-  const file = upload.files[0];
-  if (!file) return;
+function renderASCII() {
+  if (!asciiData.length) return;
 
-  const img = new Image();
-  img.onload = () => {
-    currentImage = img;
-    generateASCII();
-  };
-  img.src = URL.createObjectURL(file);
-});
+  const colorMode = colorModeSelect.value;
+  const singleColor = singleColorInput.value;
 
-scaleSelect.addEventListener("change", generateASCII);
-charsetSelect.addEventListener("change", generateASCII);
+  let html = "";
 
-colorInput.addEventListener("input", () => {
-  asciiDiv.style.color = colorInput.value;
-});
-
-// 다운로드
-document.getElementById("download").addEventListener("click", () => {
-  if (!asciiDiv.textContent.trim()) return;
-
-  const lines = asciiDiv.textContent.split("\n");
-  const fontSize = 8;
-  const font = `${fontSize}px monospace`;
-
-  const out = document.createElement("canvas");
-  const octx = out.getContext("2d");
-  octx.font = font;
-
-  const width = Math.max(...lines.map(l => octx.measureText(l).width));
-  out.width = Math.ceil(width);
-  out.height = lines.length * fontSize;
-
-  if (formatSelect.value === "jpg") {
-    octx.fillStyle = "#fff";
-    octx.fillRect(0, 0, out.width, out.height);
-  }
-
-  octx.font = font;
-  octx.fillStyle = colorInput.value;
-  octx.textBaseline = "top";
-
-  lines.forEach((l, i) => {
-    octx.fillText(l, 0, i * fontSize);
+  asciiData.forEach(row => {
+    row.forEach(cell => {
+      let color = `rgb(${cell.r},${cell.g},${cell.b})`;
+      if (colorMode === "single") color = singleColor;
+      html += `<span style="color:${color}">${cell.ch}</span>`;
+    });
+    html += "\n";
   });
 
-  const mime =
-    formatSelect.value === "png"
-      ? "image/png"
-      : "image/jpeg";
+  asciiDiv.innerHTML = html;
+}
+
+function downloadImage(type) {
+  const fontSize = 12;
+  const charWidth = fontSize * 0.6;
+
+  const out = document.createElement("canvas");
+  const ctx = out.getContext("2d");
+
+  out.width = asciiData[0].length * charWidth;
+  out.height = asciiData.length * fontSize;
+
+  if (type === "jpg") {
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, out.width, out.height);
+  }
+
+  ctx.font = `${fontSize}px monospace`;
+  ctx.textBaseline = "top";
+
+  asciiData.forEach((row, y) => {
+    row.forEach((cell, x) => {
+      const color =
+        colorModeSelect.value === "single"
+          ? singleColorInput.value
+          : `rgb(${cell.r},${cell.g},${cell.b})`;
+
+      ctx.fillStyle = color;
+      ctx.fillText(cell.ch, x * charWidth, y * fontSize);
+    });
+  });
+
+  const url = out.toDataURL(
+    type === "png" ? "image/png" : "image/jpeg",
+    0.95
+  );
 
   const a = document.createElement("a");
-  a.href = out.toDataURL(mime, 1.0);
-  a.download = `text-art.${formatSelect.value}`;
+  a.href = url;
+  a.download = `ascii.${type}`;
   a.click();
-});
+}
+
+document.getElementById("downloadPNG").onclick = () => downloadImage("png");
+document.getElementById("downloadJPG").onclick = () => downloadImage("jpg");
+
+document.getElementById("downloadTXT").onclick = () => {
+  let txt = "";
+  asciiData.forEach(row => {
+    row.forEach(c => txt += c.ch);
+    txt += "\n";
+  });
+
+  const blob = new Blob([txt], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "ascii.txt";
+  a.click();
+};
 </script>
 
 </body>
