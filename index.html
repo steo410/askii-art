@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>Image to ASCII Art (Transparent PNG)</title>
+  <style>
+    body {
+      font-family: monospace;
+      background: #111;
+      color: #eee;
+      padding: 20px;
+    }
+    input, button {
+      margin-bottom: 10px;
+    }
+    #ascii {
+      white-space: pre;
+      font-size: 8px;
+      line-height: 8px;
+    }
+  </style>
+</head>
+<body>
+  <h2>이미지 → ASCII 문자 변환 (투명 PNG)</h2>
+
+  <input type="file" accept="image/*" id="upload" />
+  <br />
+  <label>출력 색상:</label>
+  <input type="color" id="colorPicker" value="#00ff00" />
+  <br />
+  <button id="saveBtn">PNG 저장</button>
+
+  <br /><br />
+  <div id="ascii"></div>
+
+  <canvas id="canvas" style="display:none;"></canvas>
+  <canvas id="exportCanvas" style="display:none;"></canvas>
+
+  <script>
+    const upload = document.getElementById('upload');
+    const asciiDiv = document.getElementById('ascii');
+    const canvas = document.getElementById('canvas');
+    const exportCanvas = document.getElementById('exportCanvas');
+    const ctx = canvas.getContext('2d');
+    const exportCtx = exportCanvas.getContext('2d');
+    const colorPicker = document.getElementById('colorPicker');
+    const saveBtn = document.getElementById('saveBtn');
+
+    const chars =
+      "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft\\|()1{}[]?-_+~<>i!lI;:,\"^`'. ";
+
+    upload.addEventListener('change', renderASCII);
+
+    colorPicker.addEventListener('input', () => {
+      asciiDiv.style.color = colorPicker.value;
+    });
+
+    function renderASCII() {
+      const file = upload.files[0];
+      if (!file) return;
+
+      const img = new Image();
+      img.onload = () => {
+        const scale = 0.5;
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+
+        let ascii = '';
+        for (let y = 0; y < canvas.height; y++) {
+          for (let x = 0; x < canvas.width; x++) {
+            const i = (y * canvas.width + x) * 4;
+            const brightness =
+              0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+            const idx = Math.floor((brightness / 255) * (chars.length - 1));
+            ascii += chars[idx];
+          }
+          ascii += '\n';
+        }
+
+        asciiDiv.textContent = ascii;
+        asciiDiv.style.color = colorPicker.value;
+      };
+
+      img.src = URL.createObjectURL(file);
+    }
+
+    saveBtn.addEventListener('click', () => {
+      const text = asciiDiv.textContent;
+      if (!text) return;
+
+      const lines = text.split('\n').filter(l => l.trim().length > 0);
+
+      const fontSize = 8;
+      const lineHeight = 8;
+      const padding = 10;
+
+      // 넉넉하게 그릴 캔버스 (배경 안 그림 = 투명)
+      exportCanvas.width = 2000;
+      exportCanvas.height = lines.length * lineHeight + padding * 2;
+      exportCtx.clearRect(0, 0, exportCanvas.width, exportCanvas.height);
+
+      exportCtx.font = `${fontSize}px monospace`;
+      exportCtx.fillStyle = colorPicker.value;
+      exportCtx.textBaseline = "top";
+
+      lines.forEach((line, i) => {
+        exportCtx.fillText(line, padding, padding + i * lineHeight);
+      });
+
+      // 픽셀 스캔으로 정확히 크롭
+      const imgData = exportCtx.getImageData(
+        0, 0, exportCanvas.width, exportCanvas.height
+      );
+      const data = imgData.data;
+
+      let minX = exportCanvas.width, minY = exportCanvas.height;
+      let maxX = 0, maxY = 0;
+
+      for (let y = 0; y < exportCanvas.height; y++) {
+        for (let x = 0; x < exportCanvas.width; x++) {
+          const alpha = data[(y * exportCanvas.width + x) * 4 + 3];
+          if (alpha > 0) {
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+          }
+        }
+      }
+
+      const w = maxX - minX + 1;
+      const h = maxY - minY + 1;
+
+      const cropped = document.createElement('canvas');
+      cropped.width = w;
+      cropped.height = h;
+      cropped.getContext('2d').drawImage(
+        exportCanvas,
+        minX, minY, w, h,
+        0, 0, w, h
+      );
+
+      const link = document.createElement('a');
+      link.download = "ascii-art-transparent.png";
+      link.href = cropped.toDataURL("image/png");
+      link.click();
+    });
+  </script>
+</body>
+</html>
