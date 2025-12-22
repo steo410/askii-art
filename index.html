@@ -10,7 +10,6 @@ html, body {
   padding: 0;
   background: #000;
   color: #fff;
-  font-family: monospace;
   height: 100%;
 }
 
@@ -29,14 +28,10 @@ html, body {
   font-family: system-ui, sans-serif;
 }
 
-#ascii {
+#asciiCanvas {
   position: absolute;
   top: calc(var(--control-height, 80px));
   left: 0;
-  right: 0;
-  bottom: 0;
-  white-space: pre;
-  overflow: auto;
 }
 </style>
 </head>
@@ -48,7 +43,7 @@ html, body {
 
   해상도
   <select id="scale">
-    <option value="0.5">높음</option>
+    <option value="0.75">높음</option>
     <option value="1" selected>보통</option>
     <option value="2">낮음</option>
   </select>
@@ -72,11 +67,12 @@ html, body {
   <button id="downloadTXT">TXT</button>
 </div>
 
-<div id="ascii"></div>
+<canvas id="asciiCanvas"></canvas>
 
 <script>
 const controls = document.getElementById("controls");
-const asciiDiv = document.getElementById("ascii");
+const canvasOut = document.getElementById("asciiCanvas");
+const ctxOut = canvasOut.getContext("2d");
 
 const imageInput = document.getElementById("imageInput");
 const scaleSelect = document.getElementById("scale");
@@ -84,41 +80,55 @@ const charsetSelect = document.getElementById("charset");
 const colorModeSelect = document.getElementById("colorMode");
 const singleColorInput = document.getElementById("singleColor");
 
-const ENG_CHARS = ' .\'`^",:;Il!i<>~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$';
-const KOR_CHARS = ' ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎ';
+const ENG_CHARS =
+' .\'`^",:;Il!i<>~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$';
 
+const KOR_CHARS =
+'⠀ .·˙ㆍㄱㄴㄷㄹ가나다라마바사아자차카타파하한글힣';
 
 let asciiData = [];
+let sourceImage = null;
 
 // 컨트롤 높이 반영
 function updateLayout() {
-  const h = controls.offsetHeight;
-  document.documentElement.style.setProperty("--control-height", h + "px");
+  document.documentElement.style
+    .setProperty("--control-height", controls.offsetHeight + "px");
 }
 window.addEventListener("resize", updateLayout);
 updateLayout();
 
-colorModeSelect.addEventListener("change", () => {
+// 옵션 이벤트
+colorModeSelect.onchange = () => {
   singleColorInput.disabled = colorModeSelect.value !== "single";
   renderASCII();
-});
+};
+singleColorInput.oninput = renderASCII;
 
-singleColorInput.addEventListener("input", renderASCII);
-scaleSelect.addEventListener("change", renderASCII);
-charsetSelect.addEventListener("change", renderASCII);
+// charset / 해상도 변경 → 재생성
+charsetSelect.onchange = () => {
+  if (sourceImage) generateASCII(sourceImage);
+};
+scaleSelect.onchange = () => {
+  if (sourceImage) generateASCII(sourceImage);
+};
 
-imageInput.addEventListener("change", () => {
+// 이미지 로드
+imageInput.onchange = () => {
   const file = imageInput.files[0];
   if (!file) return;
 
   const img = new Image();
   img.src = URL.createObjectURL(file);
-  img.onload = () => generateASCII(img);
-});
+  img.onload = () => {
+    sourceImage = img;
+    generateASCII(img);
+  };
+};
 
 function generateASCII(img) {
   const scale = parseFloat(scaleSelect.value);
-  const chars = charsetSelect.value === "kor" ? KOR_CHARS : ENG_CHARS;
+  const chars =
+    charsetSelect.value === "kor" ? KOR_CHARS : ENG_CHARS;
 
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
@@ -130,6 +140,7 @@ function generateASCII(img) {
   const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
 
   asciiData = [];
+  const inv255 = 1 / 255;
 
   for (let y = 0; y < canvas.height; y++) {
     let row = [];
@@ -140,14 +151,9 @@ function generateASCII(img) {
       const b = data[i + 2];
 
       const brightness = 0.299*r + 0.587*g + 0.114*b;
-      const index = Math.floor(
-        (brightness / 255) * (chars.length - 1)
-      );
+      const index = Math.floor(brightness * inv255 * (chars.length - 1));
 
-      row.push({
-        ch: chars[index],
-        r, g, b
-      });
+      row.push({ ch: chars[index], r, g, b });
     }
     asciiData.push(row);
   }
@@ -158,58 +164,46 @@ function generateASCII(img) {
 function renderASCII() {
   if (!asciiData.length) return;
 
-  const colorMode = colorModeSelect.value;
-  const singleColor = singleColorInput.value;
-
-  let html = "";
-
-  asciiData.forEach(row => {
-    row.forEach(cell => {
-      let color = `rgb(${cell.r},${cell.g},${cell.b})`;
-      if (colorMode === "single") color = singleColor;
-      html += `<span style="color:${color}">${cell.ch}</span>`;
-    });
-    html += "\n";
-  });
-
-  asciiDiv.innerHTML = html;
-}
-
-function downloadImage(type) {
   const fontSize = 12;
-  const charWidth = fontSize * 0.6;
 
-  const out = document.createElement("canvas");
-  const ctx = out.getContext("2d");
+  // 🔑 한글/ASCII 실제 폭 측정 (겹침 방지)
+  ctxOut.font = `${fontSize}px monospace`;
+  const charWidth =
+    charsetSelect.value === "kor"
+      ? ctxOut.measureText("한").width
+      : ctxOut.measureText("@").width;
 
-  out.width = asciiData[0].length * charWidth;
-  out.height = asciiData.length * fontSize;
+  canvasOut.width = asciiData[0].length * charWidth;
+  canvasOut.height = asciiData.length * fontSize;
 
-  if (type === "jpg") {
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(0, 0, out.width, out.height);
-  }
+  ctxOut.clearRect(0, 0, canvasOut.width, canvasOut.height);
+  ctxOut.font = `${fontSize}px monospace`;
+  ctxOut.textBaseline = "top";
 
-  ctx.font = `${fontSize}px monospace`;
-  ctx.textBaseline = "top";
+  const single = colorModeSelect.value === "single";
+  const singleColor = singleColorInput.value;
 
   asciiData.forEach((row, y) => {
     row.forEach((cell, x) => {
-      const color =
-        colorModeSelect.value === "single"
-          ? singleColorInput.value
-          : `rgb(${cell.r},${cell.g},${cell.b})`;
+      ctxOut.fillStyle = single
+        ? singleColor
+        : `rgb(${cell.r},${cell.g},${cell.b})`;
 
-      ctx.fillStyle = color;
-      ctx.fillText(cell.ch, x * charWidth, y * fontSize);
+      ctxOut.fillText(
+        cell.ch,
+        x * charWidth,
+        y * fontSize
+      );
     });
   });
+}
 
-  const url = out.toDataURL(
+// 다운로드
+function downloadImage(type) {
+  const url = canvasOut.toDataURL(
     type === "png" ? "image/png" : "image/jpeg",
     0.95
   );
-
   const a = document.createElement("a");
   a.href = url;
   a.download = `ascii.${type}`;
@@ -225,11 +219,9 @@ document.getElementById("downloadTXT").onclick = () => {
     row.forEach(c => txt += c.ch);
     txt += "\n";
   });
-
   const blob = new Blob([txt], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url;
+  a.href = URL.createObjectURL(blob);
   a.download = "ascii.txt";
   a.click();
 };
@@ -237,4 +229,3 @@ document.getElementById("downloadTXT").onclick = () => {
 
 </body>
 </html>
-
