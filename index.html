@@ -11,7 +11,7 @@ html, body {
   background: #000;
   color: #fff;
   height: 100%;
-  overflow: hidden;
+  overflow: auto; /* 🔑 스크롤 허용 */
 }
 
 #controls {
@@ -29,10 +29,17 @@ html, body {
   font-family: system-ui, sans-serif;
 }
 
-#asciiCanvas {
+#viewer {
   position: absolute;
-  left: 0;
   top: var(--control-height);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: auto; /* 🔑 ASCII 영역만 스크롤 */
+}
+
+#asciiCanvas {
+  display: block;
 }
 </style>
 </head>
@@ -68,7 +75,9 @@ html, body {
   <button id="downloadTXT">TXT</button>
 </div>
 
-<canvas id="asciiCanvas"></canvas>
+<div id="viewer">
+  <canvas id="asciiCanvas"></canvas>
+</div>
 
 <script>
 const controls = document.getElementById("controls");
